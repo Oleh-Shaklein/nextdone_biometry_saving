@@ -10,17 +10,68 @@ class TaskDetailsScreen extends StatelessWidget {
   const TaskDetailsScreen({super.key});
 
   void _showDoneDialog(BuildContext context, TaskService service, Task task) {
-    showDoneDialog(context, 
-      () {
+    showDoneDialog(context,
+          () {
         Navigator.of(context).pop(); // закрити діалог
         service.archiveTask(task.id);
         Navigator.of(context).pop(); // повернутись назад після архівації
       },
-      () {
+          () {
         Navigator.of(context).pop(); // закрити діалог
         service.deleteTask(task.id);
         Navigator.of(context).pop(); // повернутись назад після видалення
       },
+    );
+  }
+
+  Widget _buildChecklistRecursive(BuildContext context, Task task, List<ChecklistItem> items, {double indent = 0.0}) {
+    final service = Provider.of<TaskService>(context, listen: false);
+
+    return Column(
+      children: items.map((item) {
+        return Padding(
+          padding: EdgeInsets.only(left: indent),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Checkbox(
+                    value: item.isChecked,
+                    onChanged: (val) async {
+                      await service.toggleChecklistItem(task.id, item.id);
+                      // after toggle, check if whole checklist done -> show dialog
+                      final fresh = service.tasks.firstWhere((t) => t.id == task.id, orElse: () => task);
+                      if (fresh.checklistItems != null && fresh.checklistItems!.every((i) => i.isChecked)) {
+                        _showDoneDialog(context, service, fresh);
+                      }
+                    },
+                  ),
+                  Expanded(
+                    child: Text(
+                      item.text,
+                      style: TextStyle(
+                        decoration: item.isChecked ? TextDecoration.lineThrough : null,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                  if (item.deadline != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: Text(
+                        '${item.deadline!.day}.${item.deadline!.month}.${item.deadline!.year}',
+                        style: const TextStyle(fontSize: 12, color: Colors.redAccent),
+                      ),
+                    ),
+                ],
+              ),
+              if (item.subItems.isNotEmpty)
+                _buildChecklistRecursive(context, task, item.subItems, indent: indent + 16.0),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -45,7 +96,6 @@ class TaskDetailsScreen extends StatelessWidget {
       if (task.isDone || (task.type == TaskType.checklist && (task.checklistItems?.every((i) => i.isChecked) ?? false))) {
         _showDoneDialog(context, taskService, task);
       } else {
-        // Якщо ще не виконано — просто позначити як виконане
         taskService.toggleDone(task.id);
       }
     }
@@ -110,7 +160,7 @@ class TaskDetailsScreen extends StatelessWidget {
                     const SizedBox(width: 6),
                     Text(
                       '${task.date.day}.${task.date.month}.${task.date.year} '
-                      '${task.date.hour.toString().padLeft(2, '0')}:${task.date.minute.toString().padLeft(2, '0')}',
+                          '${task.date.hour.toString().padLeft(2, '0')}:${task.date.minute.toString().padLeft(2, '0')}',
                       style: const TextStyle(fontSize: 16),
                     ),
                   ],
@@ -121,36 +171,13 @@ class TaskDetailsScreen extends StatelessWidget {
                 Consumer<TaskService>(
                   builder: (context, service, _) {
                     final updatedTask = service.tasks.firstWhere(
-                        (t) => t.id == task.id, orElse: () => task);
+                            (t) => t.id == task.id, orElse: () => task);
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text('Пункти списку:', style: TextStyle(fontWeight: FontWeight.bold)),
-                        ...?updatedTask.checklistItems?.map<Widget>((item) => ListTile(
-                              leading: Checkbox(
-                                value: item.isChecked,
-                                onChanged: (val) {
-                                  service.toggleChecklistItem(updatedTask.id, item.id);
-                                  // перевірити, чи всі підпункти виконані
-                                  final freshTask = service.tasks.firstWhere((t) => t.id == updatedTask.id, orElse: () => updatedTask);
-                                  if (freshTask.checklistItems?.every((i) => i.isChecked) ?? false) {
-                                    _showDoneDialog(context, service, freshTask);
-                                  }
-                                },
-                              ),
-                              title: Text(
-                                item.text,
-                                style: TextStyle(
-                                  decoration: item.isChecked ? TextDecoration.lineThrough : null,
-                                ),
-                              ),
-                              subtitle: item.deadline != null
-                                  ? Text(
-                                      'Дедлайн: ${item.deadline!.day}.${item.deadline!.month}.${item.deadline!.year}',
-                                      style: const TextStyle(fontSize: 13, color: Colors.redAccent),
-                                    )
-                                  : null,
-                            )),
+                        const SizedBox(height: 8),
+                        _buildChecklistRecursive(context, updatedTask, updatedTask.checklistItems ?? []),
                       ],
                     );
                   },
@@ -168,9 +195,9 @@ class TaskDetailsScreen extends StatelessWidget {
                   subtitle: Text(task.description),
                   trailing: task.repeatInterval != null
                       ? Text(
-                          _intervalToString(task.repeatInterval!),
-                          style: const TextStyle(fontSize: 14, color: Colors.blueAccent),
-                        )
+                    _intervalToString(task.repeatInterval!),
+                    style: const TextStyle(fontSize: 14, color: Colors.blueAccent),
+                  )
                       : null,
                 ),
               const SizedBox(height: 28),

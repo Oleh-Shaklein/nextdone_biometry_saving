@@ -132,7 +132,7 @@ class _CreateChecklistScreenState extends State<CreateChecklistScreen> {
     );
   }
 
-  void _saveChecklist() {
+  void _saveChecklist() async {
     if (_titleController.text.isEmpty || _items.isEmpty) return;
 
     final now = DateTime.now();
@@ -145,7 +145,7 @@ class _CreateChecklistScreenState extends State<CreateChecklistScreen> {
       checklistItems: List<ChecklistItem>.from(_items),
     );
 
-    Provider.of<TaskService>(context, listen: false).addTask(newTask);
+    await Provider.of<TaskService>(context, listen: false).addTask(newTask);
 
     Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
   }
@@ -169,14 +169,14 @@ class _CreateChecklistScreenState extends State<CreateChecklistScreen> {
             Expanded(
               child: _items.isEmpty
                   ? Center(
-                      child: Text(
-                        'Додайте пункти до вашого списку',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                    )
+                child: Text(
+                  'Додайте пункти до вашого списку',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              )
                   : SingleChildScrollView(
-                      child: _buildChecklistEditor(_items),
-                    ),
+                child: _buildChecklistEditor(_items),
+              ),
             ),
             const SizedBox(height: 8),
             Row(

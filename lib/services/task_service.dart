@@ -30,18 +30,15 @@ class TaskService extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Коли додаток йде в background або завершують, намагаємось зберегти дані
     if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       if (kDebugMode) print('[TaskService] lifecycle state=$state, saving tasks...');
-      // Не чекаємо тут прямо (не async), але викликаємо async-функцію
-      _saveTasks(); // _saveTasks() логує і намагається виконати write
+      _saveTasks();
     }
   }
 
   List<Task> get tasks => _tasks;
   List<Task> get archivedTasks => _archive;
 
-  /// Завантажити tasks та archive з LocalStorage (SharedPreferences)
   Future<void> loadFromStorage() async {
     final storage = LocalStorageService();
     final jsonStr = await storage.getString(_storageKey);
@@ -123,31 +120,65 @@ class TaskService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  Future<void> toggleChecklistItem(String taskId, String itemId) async {
-    final index = _tasks.indexWhere((t) => t.id == taskId);
-    if (index != -1 && _tasks[index].checklistItems != null) {
-      final items = _tasks[index].checklistItems!;
-      final itemIdx = items.indexWhere((i) => i.id == itemId);
-      if (itemIdx != -1) {
-        items[itemIdx] = items[itemIdx].copyWith(isChecked: !items[itemIdx].isChecked);
-        final allChecked = _allItemsChecked(items);
-        final updatedTask = _tasks[index].copyWith(
-          checklistItems: List<ChecklistItem>.from(items),
-          isDone: allChecked,
-        );
-        await updateTask(updatedTask);
+  /// recursively search checklist items and toggle the found item; returns true if toggled.
+  bool _toggleChecklistItemRecursive(List<ChecklistItem> items, String itemId) {
+    for (int i = 0; i < items.length; i++) {
+      final item = items[i];
+      if (item.id == itemId) {
+        items[i] = item.copyWith(isChecked: !item.isChecked, subItems: item.subItems);
+        return true;
+      }
+      if (item.subItems.isNotEmpty) {
+        final toggled = _toggleChecklistItemRecursive(item.subItems, itemId);
+        if (toggled) {
+          // After toggling a child, update parent done status only if needed (parent remains same structure)
+          return true;
+        }
       }
     }
+    return false;
   }
 
-  bool _allItemsChecked(List<ChecklistItem> items) {
+  /// Recomputes isDone for a checklist task (if all nested items checked => done)
+  bool _areAllChecklistItemsChecked(List<ChecklistItem> items) {
     for (final item in items) {
       if (!item.isChecked) return false;
-      if (item.subItems.isNotEmpty && !_allItemsChecked(item.subItems)) {
+      if (item.subItems.isNotEmpty && !_areAllChecklistItemsChecked(item.subItems)) {
         return false;
       }
     }
     return true;
+  }
+
+  Future<void> toggleChecklistItem(String taskId, String itemId) async {
+    final index = _tasks.indexWhere((t) => t.id == taskId);
+    if (index == -1) return;
+
+    final task = _tasks[index];
+    if (task.checklistItems == null) return;
+
+    // operate on a deep copy structure to avoid mutations surprises
+    final clonedItems = _cloneChecklistList(task.checklistItems!);
+
+    final toggled = _toggleChecklistItemRecursive(clonedItems, itemId);
+    if (!toggled) return;
+
+    final allChecked = _areAllChecklistItemsChecked(clonedItems);
+    final updatedTask = task.copyWith(
+      checklistItems: clonedItems,
+      isDone: allChecked,
+    );
+
+    _tasks[index] = updatedTask;
+    await _saveTasks();
+    notifyListeners();
+  }
+
+  // Helper to deep clone checklist items
+  List<ChecklistItem> _cloneChecklistList(List<ChecklistItem> items) {
+    return items.map((i) => i.copyWith(
+      subItems: _cloneChecklistList(i.subItems),
+    )).toList();
   }
 
   Future<void> archiveTask(String id) async {
@@ -184,7 +215,7 @@ class TaskService extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  // інші методи getTasksForDay і т.д. без змін (залишено як раніше)
+  // getTasksForDay unchanged, still generates occurrences for habits
   List<Task> getTasksForDay(DateTime day) {
     final check = DateTime(day.year, day.month, day.day);
 
