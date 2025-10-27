@@ -23,6 +23,9 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _hasToken = false;
   bool _checkingBiometric = true;
 
+  // NEW: control to temporarily show password
+  bool _obscurePassword = true;
+
   @override
   void initState() {
     super.initState();
@@ -49,6 +52,15 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  // NEW: temporarily reveal password for 1 second
+  void _showPasswordTemporary() async {
+    if (!_obscurePassword) return;
+    setState(() => _obscurePassword = false);
+    await Future.delayed(const Duration(seconds: 1));
+    if (!mounted) return;
+    setState(() => _obscurePassword = true);
+  }
+
   Future<void> _login() async {
     setState(() => _error = null);
     if (_formKey.currentState!.validate()) {
@@ -64,17 +76,9 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // This is the single entry point for biometric action from the login screen.
-  // Behavior:
-  // - If device doesn't support biometrics -> show message.
-  // - Ask biometric confirmation. If user cancels or fails -> show error.
-  // - If biometric succeeded:
-  //    - if token exists -> use it to login.
-  //    - if token not exists -> show dialog explaining how to enable (register/login first).
   Future<void> _onBiometricPressed() async {
     setState(() => _error = null);
 
-    // Quick re-check in case state changed
     final can = await _biometricService.canCheckBiometrics();
     if (!can) {
       if (!mounted) return;
@@ -82,7 +86,6 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // Ask the OS to authenticate (this is the real biometric attempt)
     final didAuth = await _biometricService.authenticate(reason: 'Підтвердіть вхід біометрією');
     if (!didAuth) {
       if (!mounted) return;
@@ -90,10 +93,8 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // If biometric success -> check for stored token
     final token = await _biometricService.readToken();
     if (token != null) {
-      // We have token: restore session
       final authOk = await Provider.of<AuthService>(context, listen: false).loginWithToken(token);
       if (authOk) {
         if (!mounted) return;
@@ -103,7 +104,6 @@ class _LoginScreenState extends State<LoginScreen> {
         setState(() => _error = 'Помилка відновлення сесії з токеном. Спробуйте увійти через email/пароль.');
       }
     } else {
-      // No token stored: inform user and offer next steps
       if (!mounted) return;
       final doAction = await showDialog<_BiometricNoTokenAction>(
         context: context,
@@ -125,13 +125,10 @@ class _LoginScreenState extends State<LoginScreen> {
       if (doAction == _BiometricNoTokenAction.register) {
         Navigator.pushNamed(context, RegistrationScreen.routeName);
       } else if (doAction == _BiometricNoTokenAction.login) {
-        // Focus user to the email/password form (no navigation).
-        // Optionally you could open a dialog; here we just show a SnackBar as hint.
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Введіть email і пароль, щоб увімкнути біометрію.')));
       }
     }
 
-    // refresh token presence state
     final tokenNow = await _biometricService.readToken();
     if (!mounted) return;
     setState(() {
@@ -166,8 +163,15 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
-                      decoration: const InputDecoration(labelText: 'Пароль'),
-                      obscureText: true,
+                      decoration: InputDecoration(
+                        labelText: 'Пароль',
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.remove_red_eye),
+                          tooltip: 'Показати пароль на 1 секунду',
+                          onPressed: _showPasswordTemporary,
+                        ),
+                      ),
+                      obscureText: _obscurePassword,
                       onSaved: (val) => _password = val!.trim(),
                       validator: (val) => val == null || val.length < 6 ? "Мінімум 6 символів" : null,
                     ),

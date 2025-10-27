@@ -24,6 +24,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   String? _error;
   bool _busy = false;
 
+  // Нове: opt-in збереження plain пароля для показу
+  bool _savePassword = false;
+
   void _showPasswordTemporary() async {
     setState(() {
       _obscurePassword = false;
@@ -57,7 +60,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     final password = _passwordController.text.trim();
 
     // register returns a token string on success, null on failure
-    final String? token = await Provider.of<AuthService>(context, listen: false).register(email, password);
+    final String? token = await Provider.of<AuthService>(context, listen: false)
+        .register(email, password, savePlainPassword: _savePassword);
 
     if (!mounted) return;
     if (token != null) {
@@ -99,9 +103,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         }
       }
 
-      // After registration go to login (or you might auto-login — here we go to login for clarity)
+      // After registration go to login
       if (!mounted) return;
       setState(() => _busy = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Реєстрація пройшла успішно.')));
       Navigator.pushReplacementNamed(context, '/login');
     } else {
       setState(() {
@@ -189,7 +194,19 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 12),
+                // Новий чекбокс: opt-in на збереження пароля для показу
+                CheckboxListTile(
+                  value: _savePassword,
+                  onChanged: (v) {
+                    setState(() {
+                      _savePassword = v ?? false;
+                    });
+                  },
+                  title: const Text('Зберегти пароль для швидкого перегляду (опціонально)'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                ),
+                const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
