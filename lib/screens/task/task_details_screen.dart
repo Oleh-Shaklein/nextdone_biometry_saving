@@ -9,6 +9,20 @@ class TaskDetailsScreen extends StatelessWidget {
 
   const TaskDetailsScreen({super.key});
 
+  /// Рекурсивно перевіряє чи всі пункти включно з УСІМА підпунктами відмічені
+  bool _areAllItemsChecked(List<ChecklistItem> items) {
+    for (final item in items) {
+      // Якщо хоча б один пункт не відмічений - список не завершений
+      if (!item.isChecked) return false;
+
+      // КРИТИЧНО: Перевіряємо підпункти незалежно від статусу батьківського пункту
+      if (item.subItems.isNotEmpty && !_areAllItemsChecked(item.subItems)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   void _showDoneDialog(BuildContext context, TaskService service, Task task) {
     showDoneDialog(context,
           () {
@@ -40,9 +54,9 @@ class TaskDetailsScreen extends StatelessWidget {
                     value: item.isChecked,
                     onChanged: (val) async {
                       await service.toggleChecklistItem(task.id, item.id);
-                      // after toggle, check if whole checklist done -> show dialog
+                      // after toggle, перевіряємо чи ВСІ пункти та підпункти виконані
                       final fresh = service.tasks.firstWhere((t) => t.id == task.id, orElse: () => task);
-                      if (fresh.checklistItems != null && fresh.checklistItems!.every((i) => i.isChecked)) {
+                      if (fresh.checklistItems != null && _areAllItemsChecked(fresh.checklistItems!)) {
                         _showDoneDialog(context, service, fresh);
                       }
                     },
@@ -93,8 +107,15 @@ class TaskDetailsScreen extends StatelessWidget {
     }
 
     void handleDoneOrChecklist(BuildContext context, Task task) {
-      if (task.isDone || (task.type == TaskType.checklist && (task.checklistItems?.every((i) => i.isChecked) ?? false))) {
+      if (task.isDone) {
         _showDoneDialog(context, taskService, task);
+      } else if (task.type == TaskType.checklist && task.checklistItems != null) {
+        // ВИПРАВЛЕННЯ: Перевіряємо ВСІ пункти включно з УСІМА підпунктами
+        if (_areAllItemsChecked(task.checklistItems!)) {
+          _showDoneDialog(context, taskService, task);
+        } else {
+          taskService.toggleDone(task.id);
+        }
       } else {
         taskService.toggleDone(task.id);
       }

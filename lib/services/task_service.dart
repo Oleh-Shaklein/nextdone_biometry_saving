@@ -120,7 +120,22 @@ class TaskService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// recursively search checklist items and toggle the found item; returns true if toggled.
+  /// Рекурсивно перевіряє чи всі пункти (включно з УСІМА підпунктами) відмічені
+  bool _areAllChecklistItemsChecked(List<ChecklistItem> items) {
+    for (final item in items) {
+      // Якщо хоча б один пункт не відмічений - список не завершений
+      if (!item.isChecked) return false;
+
+      // КРИТИЧНО: Перевіряємо підпункти незалежно від статусу батьківського пункту
+      // Навіть якщо батьківський пункт відмічений, але підпункти ні - список не завершений
+      if (item.subItems.isNotEmpty && !_areAllChecklistItemsChecked(item.subItems)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Рекурсивно шукає та перемикає пункт списку
   bool _toggleChecklistItemRecursive(List<ChecklistItem> items, String itemId) {
     for (int i = 0; i < items.length; i++) {
       final item = items[i];
@@ -131,23 +146,11 @@ class TaskService extends ChangeNotifier with WidgetsBindingObserver {
       if (item.subItems.isNotEmpty) {
         final toggled = _toggleChecklistItemRecursive(item.subItems, itemId);
         if (toggled) {
-          // After toggling a child, update parent done status only if needed (parent remains same structure)
           return true;
         }
       }
     }
     return false;
-  }
-
-  /// Recomputes isDone for a checklist task (if all nested items checked => done)
-  bool _areAllChecklistItemsChecked(List<ChecklistItem> items) {
-    for (final item in items) {
-      if (!item.isChecked) return false;
-      if (item.subItems.isNotEmpty && !_areAllChecklistItemsChecked(item.subItems)) {
-        return false;
-      }
-    }
-    return true;
   }
 
   Future<void> toggleChecklistItem(String taskId, String itemId) async {
@@ -157,12 +160,13 @@ class TaskService extends ChangeNotifier with WidgetsBindingObserver {
     final task = _tasks[index];
     if (task.checklistItems == null) return;
 
-    // operate on a deep copy structure to avoid mutations surprises
+    // Глибока копія структури щоб уникнути мутацій
     final clonedItems = _cloneChecklistList(task.checklistItems!);
 
     final toggled = _toggleChecklistItemRecursive(clonedItems, itemId);
     if (!toggled) return;
 
+    // ВИПРАВЛЕННЯ: Перевіряємо ВСІ пункти та ВСІ підпункти на всіх рівнях вкладеності
     final allChecked = _areAllChecklistItemsChecked(clonedItems);
     final updatedTask = task.copyWith(
       checklistItems: clonedItems,
@@ -174,7 +178,7 @@ class TaskService extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  // Helper to deep clone checklist items
+  // Допоміжна функція для глибокого клонування чеклістів
   List<ChecklistItem> _cloneChecklistList(List<ChecklistItem> items) {
     return items.map((i) => i.copyWith(
       subItems: _cloneChecklistList(i.subItems),
@@ -215,7 +219,6 @@ class TaskService extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  // getTasksForDay unchanged, still generates occurrences for habits
   List<Task> getTasksForDay(DateTime day) {
     final check = DateTime(day.year, day.month, day.day);
 

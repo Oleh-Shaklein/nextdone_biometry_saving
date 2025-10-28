@@ -55,20 +55,205 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Групує всі активні завдання по датах з окремою групою для важливих
+  Map<String, List<Task>> _groupTasksByDate(List<Task> tasks) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final weekEnd = today.add(const Duration(days: 7));
+
+    Map<String, List<Task>> grouped = {
+      'Актуальне': [], // Спеціальна група для важливих завдань
+      'Сьогодні': [],
+      'Завтра': [],
+      'Цього тижня': [],
+      'Пізніше': [],
+    };
+
+    for (var task in tasks) {
+      // Якщо завдання важливе - додаємо до групи "Актуальне"
+      if (task.isImportant) {
+        grouped['Актуальне']!.add(task);
+        continue; // Не додаємо до інших груп
+      }
+
+      final taskDate = DateTime(task.date.year, task.date.month, task.date.day);
+
+      if (taskDate.isAtSameMomentAs(today)) {
+        grouped['Сьогодні']!.add(task);
+      } else if (taskDate.isAtSameMomentAs(tomorrow)) {
+        grouped['Завтра']!.add(task);
+      } else if (taskDate.isAfter(tomorrow) && taskDate.isBefore(weekEnd)) {
+        grouped['Цього тижня']!.add(task);
+      } else if (taskDate.isAfter(weekEnd)) {
+        grouped['Пізніше']!.add(task);
+      }
+    }
+
+    // Сортуємо в кожній групі по даті/часу та статусу виконання
+    for (var key in grouped.keys) {
+      grouped[key]!.sort((a, b) {
+        if (a.isDone != b.isDone) {
+          return a.isDone ? 1 : -1;
+        }
+        return a.date.compareTo(b.date);
+      });
+    }
+
+    return grouped;
+  }
+
+  Widget _buildTaskCard(Task task, TaskService taskService) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 14),
+      child: Card(
+        elevation: task.isImportant ? 5 : 3,
+        color: task.isImportant ? Colors.orange[100] : Theme.of(context).cardColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          leading: Icon(
+            task.type == TaskType.reminder
+                ? Icons.alarm
+                : task.type == TaskType.habit
+                ? Icons.repeat
+                : Icons.check_box,
+            color: task.isImportant ? Colors.orange : Theme.of(context).iconTheme.color,
+            size: 32,
+          ),
+          title: Text(
+            task.title,
+            style: TextStyle(
+              fontWeight: task.isImportant ? FontWeight.bold : FontWeight.normal,
+              decoration: task.isDone ? TextDecoration.lineThrough : null,
+              fontSize: 18,
+            ),
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (task.description.isNotEmpty)
+                Text(
+                  task.description,
+                  style: const TextStyle(fontSize: 15),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              const SizedBox(height: 4),
+              Text(
+                '${task.date.day}.${task.date.month}.${task.date.year} '
+                    '${task.date.hour.toString().padLeft(2, '0')}:${task.date.minute.toString().padLeft(2, '0')}',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: Icon(
+                  task.isImportant
+                      ? Icons.whatshot
+                      : Icons.whatshot_outlined,
+                  color: Colors.orange[700],
+                  size: 28,
+                ),
+                tooltip: 'Важливе',
+                onPressed: () {
+                  taskService.toggleImportant(task.id);
+                },
+              ),
+              IconButton(
+                icon: Icon(
+                  task.isDone
+                      ? Icons.check_circle
+                      : Icons.radio_button_unchecked,
+                  color: Colors.green,
+                  size: 28,
+                ),
+                tooltip: 'Виконане',
+                onPressed: () {
+                  taskService.archiveTask(task.id);
+                },
+              ),
+            ],
+          ),
+          onTap: () {
+            Navigator.pushNamed(context, '/task_details', arguments: task);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSection(String title, List<Task> tasks, TaskService taskService) {
+    if (tasks.isEmpty) return const SizedBox.shrink();
+
+    // Спеціальне оформлення для секції "Актуальне"
+    final isImportantSection = title == 'Актуальне';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
+          child: Row(
+            children: [
+              if (isImportantSection)
+                const Icon(Icons.whatshot, color: Colors.orange, size: 24),
+              if (isImportantSection)
+                const SizedBox(width: 8),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: isImportantSection ? Colors.orange[800] : Colors.deepPurple,
+                ),
+              ),
+              if (isImportantSection)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.orange[100],
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${tasks.length}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.orange[900],
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        ...tasks.map((task) => _buildTaskCard(task, taskService)),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final today = DateTime.now();
     final taskService = Provider.of<TaskService>(context);
-    final tasksForToday = taskService.getTasksForDay(today);
 
-    // Upcoming reminders: reminders scheduled after today within next 7 days
-    final upcomingWindowEnd = DateTime.now().add(const Duration(days: 7));
-    final upcomingReminders = taskService.tasks.where((t) {
-      if (t.type != TaskType.reminder) return false;
-      final taskDate = DateTime(t.date.year, t.date.month, t.date.day);
-      final nowDate = DateTime.now();
-      return taskDate.isAfter(nowDate) && !taskDate.isAfter(upcomingWindowEnd);
-    }).toList();
+    // Отримуємо всі активні завдання (не архівовані)
+    final allActiveTasks = taskService.tasks;
+
+    // Групуємо по датах
+    final groupedTasks = _groupTasksByDate(allActiveTasks);
 
     return Scaffold(
       appBar: AppBar(
@@ -98,15 +283,18 @@ class _HomeScreenState extends State<HomeScreen> {
                 _calendarExpanded = !_calendarExpanded;
               });
             },
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  _calendarExpanded ? "Згорнути календар" : "Розгорнути календар",
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                Icon(_calendarExpanded ? Icons.arrow_drop_up : Icons.arrow_drop_down)
-              ],
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    _calendarExpanded ? "Згорнути календар" : "Розгорнути календар",
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Icon(_calendarExpanded ? Icons.arrow_drop_up : Icons.arrow_drop_down)
+                ],
+              ),
             ),
           ),
           AnimatedCrossFade(
@@ -138,18 +326,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     shape: BoxShape.circle,
                   ),
                 ),
-                // Load events for the day using TaskService.getTasksForDay
                 eventLoader: (day) {
-                  // normalize to date without time
                   final d = DateTime(day.year, day.month, day.day);
                   return taskService.getTasksForDay(d);
                 },
                 calendarBuilders: CalendarBuilders(
                   markerBuilder: (context, day, events) {
-                    // events is a List of Task for this day (from eventLoader)
                     if (events.isEmpty) return const SizedBox.shrink();
 
-                    // show up to 3 small dots (or 1) for presence of tasks.
                     final int dotCount = events.length > 3 ? 3 : events.length;
                     return Positioned(
                       bottom: 6,
@@ -185,139 +369,40 @@ class _HomeScreenState extends State<HomeScreen> {
             secondChild: const SizedBox.shrink(),
           ),
 
-          // Tasks for today
+          // Єдиний великий список з усіма завданнями
           Expanded(
-            child: tasksForToday.isEmpty
+            child: allActiveTasks.isEmpty
                 ? Center(
-              child: Text(
-                "Немає завдань на сьогодні",
-                style: Theme.of(context).textTheme.titleLarge,
-                textAlign: TextAlign.center,
-              ),
-            )
-                : ListView.builder(
-              itemCount: tasksForToday.length,
-              itemBuilder: (_, i) {
-                final task = tasksForToday[i];
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 14),
-                  child: Card(
-                    elevation: 3,
-                    color: task.isImportant ? Colors.orange[200] : Theme.of(context).cardColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      leading: Icon(
-                        task.type == TaskType.reminder
-                            ? Icons.alarm
-                            : task.type == TaskType.habit
-                            ? Icons.repeat
-                            : Icons.check_box,
-                        color: task.isImportant ? Colors.orange : Theme.of(context).iconTheme.color,
-                        size: 32,
-                      ),
-                      title: Text(
-                        task.title,
-                        style: TextStyle(
-                          fontWeight: task.isImportant ? FontWeight.bold : FontWeight.normal,
-                          decoration: task.isDone ? TextDecoration.lineThrough : null,
-                          fontSize: 18,
-                        ),
-                      ),
-                      subtitle: Text(
-                        task.description,
-                        style: const TextStyle(fontSize: 15),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: Icon(
-                              task.isImportant
-                                  ? Icons.whatshot
-                                  : Icons.whatshot_outlined,
-                              color: Colors.orange[700],
-                              size: 28,
-                            ),
-                            tooltip: 'Важливе',
-                            onPressed: () {
-                              taskService.toggleImportant(task.id);
-                            },
-                          ),
-                          IconButton(
-                            icon: Icon(
-                              task.isDone
-                                  ? Icons.check_circle
-                                  : Icons.radio_button_unchecked,
-                              color: Colors.green,
-                              size: 28,
-                            ),
-                            tooltip: 'Виконане',
-                            onPressed: () {
-                              taskService.archiveTask(task.id);
-                            },
-                          ),
-                        ],
-                      ),
-                      onTap: () {
-                        Navigator.pushNamed(context, '/task_details', arguments: task);
-                      },
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-
-          // If there are upcoming reminders in next 7 days - show them in a separate small section
-          if (upcomingReminders.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
-              color: Theme.of(context).colorScheme.surfaceVariant,
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text('Майбутні нагадування (7 днів)', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 6),
-                  SizedBox(
-                    height: 90,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemBuilder: (_, i) {
-                        final r = upcomingReminders[i];
-                        return GestureDetector(
-                          onTap: () {
-                            // open day view for reminder's day
-                            _openDayView(r.date);
-                          },
-                          child: Card(
-                            child: Container(
-                              width: 220,
-                              padding: const EdgeInsets.all(10),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(r.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 4),
-                                  Text('${r.date.day}.${r.date.month}.${r.date.year} ${r.date.hour.toString().padLeft(2, '0')}:${r.date.minute.toString().padLeft(2, '0')}'),
-                                  const SizedBox(height: 6),
-                                  Text(r.description, maxLines: 2, overflow: TextOverflow.ellipsis),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                      separatorBuilder: (_, __) => const SizedBox(width: 8),
-                      itemCount: upcomingReminders.length,
+                  Icon(
+                    Icons.check_circle_outline,
+                    size: 80,
+                    color: Colors.grey[400],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    "Немає активних завдань",
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: Colors.grey[600],
                     ),
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),
+            )
+                : ListView(
+              children: [
+                _buildSection('Актуальне', groupedTasks['Актуальне']!, taskService),
+                _buildSection('Сьогодні', groupedTasks['Сьогодні']!, taskService),
+                _buildSection('Завтра', groupedTasks['Завтра']!, taskService),
+                _buildSection('Цього тижня', groupedTasks['Цього тижня']!, taskService),
+                _buildSection('Пізніше', groupedTasks['Пізніше']!, taskService),
+                const SizedBox(height: 80), // padding для bottomNavigationBar
+              ],
             ),
-
+          ),
         ],
       ),
       bottomNavigationBar: Padding(

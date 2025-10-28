@@ -24,7 +24,18 @@ class _CreateChecklistScreenState extends State<CreateChecklistScreen> {
     });
   }
 
-  // ---- Рекурсивна логіка ----
+  /// Рекурсивно перевіряє чи всі пункти (включно з підпунктами) мають текст
+  bool _areAllItemsValid(List<ChecklistItem> items) {
+    for (final item in items) {
+      if (item.text.trim().isEmpty) return false;
+      if (item.subItems.isNotEmpty && !_areAllItemsValid(item.subItems)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Рекурсивна логіка побудови редактора чеклістів
   Widget _buildChecklistEditor(List<ChecklistItem> items, {ChecklistItem? parent, int? parentIndex}) {
     return Column(
       children: items.asMap().entries.map((entry) {
@@ -133,12 +144,33 @@ class _CreateChecklistScreenState extends State<CreateChecklistScreen> {
   }
 
   void _saveChecklist() async {
-    if (_titleController.text.isEmpty || _items.isEmpty) return;
+    // Валідація: перевіряємо що є назва та всі пункти заповнені
+    if (_titleController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Будь ласка, введіть назву списку')),
+      );
+      return;
+    }
+
+    if (_items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Додайте хоча б один пункт до списку')),
+      );
+      return;
+    }
+
+    // Перевіряємо що всі пункти (включно з підпунктами) мають текст
+    if (!_areAllItemsValid(_items)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Заповніть всі пункти та підпункти')),
+      );
+      return;
+    }
 
     final now = DateTime.now();
     final newTask = Task(
       id: UniqueKey().toString(),
-      title: _titleController.text,
+      title: _titleController.text.trim(),
       description: '',
       date: now,
       type: TaskType.checklist,
@@ -147,7 +179,9 @@ class _CreateChecklistScreenState extends State<CreateChecklistScreen> {
 
     await Provider.of<TaskService>(context, listen: false).addTask(newTask);
 
-    Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+    if (mounted) {
+      Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false);
+    }
   }
 
   @override
@@ -198,5 +232,11 @@ class _CreateChecklistScreenState extends State<CreateChecklistScreen> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    super.dispose();
   }
 }

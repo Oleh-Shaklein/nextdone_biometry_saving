@@ -26,16 +26,58 @@ class _EditChecklistScreenState extends State<EditChecklistScreen> {
   List<ChecklistItem> _deepCopyItems(List<ChecklistItem> items) {
     return items
         .map((i) => ChecklistItem(
-              id: i.id,
-              text: i.text,
-              isChecked: i.isChecked,
-              deadline: i.deadline,
-              subItems: _deepCopyItems(i.subItems),
-            ))
+      id: i.id,
+      text: i.text,
+      isChecked: i.isChecked,
+      deadline: i.deadline,
+      subItems: _deepCopyItems(i.subItems),
+    ))
         .toList();
   }
 
+  /// Рекурсивно перевіряє чи всі пункти (включно з УСІМА підпунктами) відмічені
+  bool _allItemsChecked(List<ChecklistItem> items) {
+    for (final item in items) {
+      // Якщо хоча б один пункт не відмічений - список не завершений
+      if (!item.isChecked) return false;
+
+      // КРИТИЧНО: Перевіряємо підпункти незалежно від статусу батьківського пункту
+      if (item.subItems.isNotEmpty && !_allItemsChecked(item.subItems)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Рекурсивно перевіряє чи всі пункти (включно з підпунктами) мають текст
+  bool _areAllItemsValid(List<ChecklistItem> items) {
+    for (final item in items) {
+      if (item.text.trim().isEmpty) return false;
+      if (item.subItems.isNotEmpty && !_areAllItemsValid(item.subItems)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   void _save() {
+    // Валідація: перевіряємо що всі пункти заповнені
+    if (_items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Список повинен містити хоча б один пункт')),
+      );
+      return;
+    }
+
+    // Перевіряємо що всі пункти (включно з підпунктами) мають текст
+    if (!_areAllItemsValid(_items)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Заповніть всі пункти та підпункти')),
+      );
+      return;
+    }
+
+    // ВИПРАВЛЕННЯ: Перевіряємо ВСІ пункти та підпункти для визначення статусу isDone
     final allChecked = _allItemsChecked(_items);
     final newTask = _task.copyWith(
       checklistItems: _deepCopyItems(_items),
@@ -45,21 +87,11 @@ class _EditChecklistScreenState extends State<EditChecklistScreen> {
     Navigator.pop(context);
   }
 
-  bool _allItemsChecked(List<ChecklistItem> items) {
-    for (final item in items) {
-      if (!item.isChecked) return false;
-      if (item.subItems.isNotEmpty && !_allItemsChecked(item.subItems)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
   Widget _buildChecklistEditor(
-    List<ChecklistItem> items, {
-    ChecklistItem? parent,
-    int? parentIndex,
-  }) {
+      List<ChecklistItem> items, {
+        ChecklistItem? parent,
+        int? parentIndex,
+      }) {
     return Column(
       children: items.asMap().entries.map((entry) {
         final idx = entry.key;
@@ -203,11 +235,11 @@ class _EditChecklistScreenState extends State<EditChecklistScreen> {
             Expanded(
               child: _items.isEmpty
                   ? Center(
-                      child: Text(
-                        'Немає пунктів у цьому списку',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                    )
+                child: Text(
+                  'Немає пунктів у цьому списку',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              )
                   : SingleChildScrollView(child: _buildChecklistEditor(_items)),
             ),
             Align(
