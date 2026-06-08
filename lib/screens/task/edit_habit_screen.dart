@@ -15,6 +15,7 @@ class EditHabitScreen extends StatefulWidget {
 class _EditHabitScreenState extends State<EditHabitScreen> {
   late TextEditingController _titleController;
   late TextEditingController _descriptionController;
+  DateTime? _habitDate;
   TimeOfDay? _reminderTime;
   Duration? _repeatInterval;
   late Task _task;
@@ -30,8 +31,21 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
     _task = task;
     _titleController = TextEditingController(text: task.title);
     _descriptionController = TextEditingController(text: task.description);
+    _habitDate = task.date;
     _reminderTime = task.reminderTime;
     _repeatInterval = task.repeatInterval;
+  }
+
+  void _pickHabitDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _habitDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked != null) {
+      setState(() => _habitDate = picked);
+    }
   }
 
   void _pickReminderTime() async {
@@ -73,12 +87,18 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
   }
 
   void _submit() {
-    final now = DateTime.now();
+    if (_habitDate == null || _reminderTime == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Виберіть дату та час нагадування')),
+      );
+      return;
+    }
+
     final updatedTask = Task(
       id: _task.id,
       title: _titleController.text,
       description: _descriptionController.text,
-      date: DateTime(now.year, now.month, now.day, _reminderTime?.hour ?? 0, _reminderTime?.minute ?? 0),
+      date: DateTime(_habitDate!.year, _habitDate!.month, _habitDate!.day, _reminderTime!.hour, _reminderTime!.minute),
       type: TaskType.habit,
       reminderTime: _reminderTime,
       repeatInterval: _repeatInterval,
@@ -127,6 +147,21 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
               ),
               maxLines: 2,
             ),
+            const SizedBox(height: 16),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.calendar_today),
+              title: const Text('Дата звички'),
+              subtitle: Text(
+                _habitDate != null
+                    ? '${_habitDate!.day}.${_habitDate!.month}.${_habitDate!.year}'
+                    : 'Не вибрано',
+              ),
+              trailing: TextButton(
+                onPressed: _pickHabitDate,
+                child: const Text('Вибрати'),
+              ),
+            ),
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.notifications_active),
@@ -168,5 +203,12 @@ class _EditHabitScreenState extends State<EditHabitScreen> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
   }
 }
