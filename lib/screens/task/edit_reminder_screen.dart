@@ -17,26 +17,36 @@ class _EditReminderScreenState extends State<EditReminderScreen> {
   late TextEditingController _descriptionController;
   DateTime? _reminderDateTime;
   late Task _task;
+  bool _initialized = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final Task? task = ModalRoute.of(context)?.settings.arguments as Task?;
-    if (task == null) {
-      Navigator.pop(context);
-      return;
+    if (!_initialized) {
+      final Task? task = ModalRoute.of(context)?.settings.arguments as Task?;
+      if (task == null) {
+        Navigator.pop(context);
+        return;
+      }
+      _task = task;
+      _titleController = TextEditingController(text: task.title);
+      _descriptionController = TextEditingController(text: task.description);
+      _reminderDateTime = task.date != null ? DateTime(
+        task.date!.year,
+        task.date!.month,
+        task.date!.day,
+        task.date!.hour,
+        task.date!.minute,
+      ) : DateTime.now();
+      _initialized = true;
     }
-    _task = task;
-    _titleController = TextEditingController(text: task.title);
-    _descriptionController = TextEditingController(text: task.description);
-    _reminderDateTime = task.date;
   }
 
   void _pickDateTime() async {
     final date = await showDatePicker(
       context: context,
       initialDate: _reminderDateTime ?? DateTime.now(),
-      firstDate: DateTime.now(),
+      firstDate: DateTime(2020),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
     if (date == null) return;
@@ -61,6 +71,13 @@ class _EditReminderScreenState extends State<EditReminderScreen> {
   }
 
   void _submit() {
+    if (_titleController.text.isEmpty || _reminderDateTime == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Заповніть усі поля')),
+      );
+      return;
+    }
+
     final updatedTask = Task(
       id: _task.id,
       title: _titleController.text,
@@ -135,5 +152,12 @@ class _EditReminderScreenState extends State<EditReminderScreen> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    super.dispose();
   }
 }
